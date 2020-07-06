@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  
+</body>
+<script src="/dist/umd/vue.js"></script>
+<script>
+  let vm = new Vue({
+    el: '#app',
+    data() {
+      return {
+        age: 22,
+        name: 'json',
+        skill: ['吃饭', '睡觉', '打豆豆', {a: '打飞机', b: '打坦克', c: '打潜艇'}],
+        others: {
+          a: 1,
+          b: 2,
+          c: 3,
+          d: [1, 2, 3]
+        }
+      }
+    },
+    computed() {
+
+    },
+    watch() {
+
+    }
+  })
+</script>
+</html>
