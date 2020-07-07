@@ -1,5 +1,6 @@
 import {initState} from './state'
 import {compileToFunction} from './compiler/index'
+import {mountComponent} from './lifycycle'
 
 export function initMixin(Vue) {
   // 在原型上添加一个init方法
@@ -30,6 +31,9 @@ export function initMixin(Vue) {
       }
       const render = compileToFunction(template)
       options.render = render
+      
+      // 渲染当前组件 挂载组件
+      mountComponent(vm, el)
     }
   }
 }
