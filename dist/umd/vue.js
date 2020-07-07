@@ -119,6 +119,23 @@
       value: value
     });
   }
+  /**
+   * 数据代理
+   * @param {*} vm 
+   * @param {*} source 
+   * @param {*} key 
+   */
+
+  function proxy(vm, source, key) {
+    Object.defineProperty(vm, key, {
+      get: function get() {
+        return vm[source][key];
+      },
+      set: function set(newValue) {
+        vm[source][key] = newValue;
+      }
+    });
+  }
 
   // 重新会导致原数组改变的方法 7个
   var oldArrayMethods = Array.prototype; // 原型链查找
@@ -251,9 +268,14 @@
     // 数据初始化
     var data = vm.$options.data; // 用户传递的data
 
-    data = vm._data = typeof data === 'function' ? data.call(vm) : data; // 对象劫持 用户改变数据 我希望得到通知 刷新界面
+    data = vm._data = typeof data === 'function' ? data.call(vm) : data; // 代理_data属性到vm上
+
+    for (var key in data) {
+      proxy(vm, '_data', key);
+    } // 对象劫持 用户改变数据 我希望得到通知 刷新界面
     // MVVM 数据驱动视图
     // Object.defineProperty()
+
 
     observe(data); // 响应式原理
   }
