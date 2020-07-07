@@ -42,6 +42,62 @@
     return Constructor;
   }
 
+  function _slicedToArray(arr, i) {
+    return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest();
+  }
+
+  function _arrayWithHoles(arr) {
+    if (Array.isArray(arr)) return arr;
+  }
+
+  function _iterableToArrayLimit(arr, i) {
+    if (typeof Symbol === "undefined" || !(Symbol.iterator in Object(arr))) return;
+    var _arr = [];
+    var _n = true;
+    var _d = false;
+    var _e = undefined;
+
+    try {
+      for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) {
+        _arr.push(_s.value);
+
+        if (i && _arr.length === i) break;
+      }
+    } catch (err) {
+      _d = true;
+      _e = err;
+    } finally {
+      try {
+        if (!_n && _i["return"] != null) _i["return"]();
+      } finally {
+        if (_d) throw _e;
+      }
+    }
+
+    return _arr;
+  }
+
+  function _unsupportedIterableToArray(o, minLen) {
+    if (!o) return;
+    if (typeof o === "string") return _arrayLikeToArray(o, minLen);
+    var n = Object.prototype.toString.call(o).slice(8, -1);
+    if (n === "Object" && o.constructor) n = o.constructor.name;
+    if (n === "Map" || n === "Set") return Array.from(o);
+    if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen);
+  }
+
+  function _arrayLikeToArray(arr, len) {
+    if (len == null || len > arr.length) len = arr.length;
+
+    for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i];
+
+    return arr2;
+  }
+
+  function _nonIterableRest() {
+    throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+  }
+
   /**
    * 
    * @param {*} data 当前数据是不是对象
@@ -234,8 +290,7 @@
 
 
   function start(tagName, attrs) {
-    console.log("开始标签", tagName, attrs); // 遇到开始标签 创建ast元素
-
+    // 遇到开始标签 创建ast元素
     var element = createASTElement(tagName, attrs);
 
     if (!root) {
@@ -257,13 +312,10 @@
         type: TEXT_TYPE
       });
     }
-
-    console.log("文本是" + text);
   } // 解析结束标签  找到父节点 添加孩子
 
 
   function end(tagName) {
-    console.log("结束标签", tagName);
     var element = stack.pop(); // 拿到的是ast对象
     // 标识当前这个元素是属于哪个父亲的
 
@@ -349,11 +401,87 @@
     return root;
   }
 
+  var defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g; // 处理属性 拼接成属性的字符串
+
+  function genProps(attrs) {
+    var str = '';
+
+    for (var i = 0; i < attrs.length; i++) {
+      var attr = attrs[i]; // 将style属性转为对象
+
+      if (attr.name === 'style') {
+        (function () {
+          var obj = {};
+          attr.value.split(';').forEach(function (item) {
+            var _item$split = item.split(':'),
+                _item$split2 = _slicedToArray(_item$split, 2),
+                key = _item$split2[0],
+                value = _item$split2[1];
+
+            obj[key] = value;
+          });
+          attr.value = obj;
+        })();
+      }
+
+      str += "".concat(attr.name, ":").concat(JSON.stringify(attr.value), ",");
+    }
+
+    return "{".concat(str.slice(0, -1), "}");
+  }
+
+  function genChildren(children) {
+    if (children && children.length > 0) {
+      return "".concat(children.map(function (c) {
+        return gen(c);
+      }).join(','));
+    }
+  }
+
+  function gen(node) {
+    if (node.type == 1) {
+      // 元素标签
+      return generate(node);
+    } else {
+      var text = node.text;
+      var tokens = [];
+      var match, index; // 每次的偏移量
+
+      var lastIndex = defaultTagRE.lastIndex = 0; // 只要是全局匹配 就需要每次匹配时将lastIndex调到0处
+
+      while (match = defaultTagRE.exec(text)) {
+        index = match.index;
+
+        if (index > lastIndex) {
+          tokens.push(JSON.stringify(text.slice(lastIndex, index)));
+        }
+
+        tokens.push("_s(".concat(match[1].trim(), ")"));
+        lastIndex = index + match[0].length;
+      }
+
+      if (lastIndex < text.length) {
+        tokens.push(JSON.stringify(text.slice(lastIndex)));
+      }
+
+      return "_v(".concat(tokens.join('+'), ")");
+    }
+  }
+
+  function generate(el) {
+    var code = "_c(\"".concat(el.tag, "\",").concat(el.attrs.length ? genProps(el.attrs) : 'undefined').concat(el.children ? ",".concat(genChildren(el.children)) : '', ")\n  ");
+    return code;
+  }
+
   function compileToFunction(template) {
     // 1 解析模板  将模板转为AST语法树
     var root = parseHTML(template);
-    console.log(root);
-    return function render() {};
+    console.log(root); // 2 需要将ast语法树生成为最终的render函数（就是字符串拼接 模板引擎）
+
+    var code = generate(root); // 通过with（obj）将后面的{}中的语句块中的缺省对象设置为obj
+
+    var renderFn = new Function("with(this){return ".concat(code, "}"));
+    return renderFn; // 模板引擎实现： 1.拼接字符串 2.增加with 3.new Function
   }
 
   function initMixin(Vue) {

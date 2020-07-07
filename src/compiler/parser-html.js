@@ -25,7 +25,6 @@ function createASTElement(tagName, attrs) {
 
 // 解析开始标签  创建ast元素
 function start(tagName, attrs) {
-  console.log("开始标签", tagName, attrs)
   // 遇到开始标签 创建ast元素
   let element = createASTElement(tagName, attrs)
   if (!root) {
@@ -43,11 +42,9 @@ function chars(text) {
       type: TEXT_TYPE
     })
   }
-  console.log("文本是" + text)
 }
 // 解析结束标签  找到父节点 添加孩子
 function end(tagName) {
-  console.log("结束标签", tagName)
   let element = stack.pop() // 拿到的是ast对象
   // 标识当前这个元素是属于哪个父亲的
   currentParent = stack[stack.length - 1]
