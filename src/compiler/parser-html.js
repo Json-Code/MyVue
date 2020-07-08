@@ -7,53 +7,54 @@ const attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s
 const startTagClose = /^\s*(\/?)>/ // 匹配标签结束的>
 const defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g
 
-let root = null // ast语法树的树根
-let currentParent // 标识当前父亲
-let stack = []
-const ELEMENT_TYPE = 1
-const TEXT_TYPE = 3
-
-function createASTElement(tagName, attrs) {
-  return {
-    tag: tagName,
-    type: ELEMENT_TYPE,
-    children: [],
-    attrs,
-    parent: null
-  }
-}
-
-// 解析开始标签  创建ast元素
-function start(tagName, attrs) {
-  // 遇到开始标签 创建ast元素
-  let element = createASTElement(tagName, attrs)
-  if (!root) {
-    root = element
-  }
-  currentParent = element // 把当前父元素标记为父ast树
-  stack.push(element)
-}
-// 解析文本标签 直接添加到当前父元素
-function chars(text) {
-  text = text.replace(/\s/g, '')
-  if(text) {
-    currentParent.children.push({
-      text,
-      type: TEXT_TYPE
-    })
-  }
-}
-// 解析结束标签  找到父节点 添加孩子
-function end(tagName) {
-  let element = stack.pop() // 拿到的是ast对象
-  // 标识当前这个元素是属于哪个父亲的
-  currentParent = stack[stack.length - 1]
-  if(currentParent) {
-    element.parent = currentParent
-    currentParent.children.push(element)
-  }
-}
 export function parseHTML(html) {
+  let root = null // ast语法树的树根
+  let currentParent // 标识当前父亲
+  let stack = []
+  const ELEMENT_TYPE = 1
+  const TEXT_TYPE = 3
+  
+  function createASTElement(tagName, attrs) {
+    return {
+      tag: tagName,
+      type: ELEMENT_TYPE,
+      children: [],
+      attrs,
+      parent: null
+    }
+  }
+  
+  // 解析开始标签  创建ast元素
+  function start(tagName, attrs) {
+    // 遇到开始标签 创建ast元素
+    let element = createASTElement(tagName, attrs)
+    if (!root) {
+      root = element
+    }
+    currentParent = element // 把当前父元素标记为父ast树
+    stack.push(element)
+  }
+  // 解析文本标签 直接添加到当前父元素
+  function chars(text) {
+    text = text.replace(/\s/g, '')
+    if(text) {
+      currentParent.children.push({
+        text,
+        type: TEXT_TYPE
+      })
+    }
+  }
+  // 解析结束标签  找到父节点 添加孩子
+  function end(tagName) {
+    let element = stack.pop() // 拿到的是ast对象
+    // 标识当前这个元素是属于哪个父亲的
+    currentParent = stack[stack.length - 1]
+    if(currentParent) {
+      element.parent = currentParent
+      currentParent.children.push(element)
+    }
+  }
+    
   // 不停的去解析html
   while(html) {
     let textEnd = html.indexOf('<')
