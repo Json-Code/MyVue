@@ -273,20 +273,66 @@
       }
 
       if (inserted) {
+        // 新增属性继续观察
         this.__ob__.observerArray(inserted);
       }
 
+      ob.dep.notify();
       return result;
     };
   });
+
+  var id = 0;
+  var Dep = /*#__PURE__*/function () {
+    function Dep() {
+      _classCallCheck(this, Dep);
+
+      this.id = id++;
+      this.subs = [];
+    }
+
+    _createClass(Dep, [{
+      key: "addSub",
+      value: function addSub(watcher) {
+        this.subs.push(watcher);
+      }
+    }, {
+      key: "depend",
+      value: function depend() {
+        // 让当前的watcher 记住我当前的dep 
+        //  当前watcher存有当前dep的时候 说明当前dep也存在当前watcher
+        Dep.target.addDep(this);
+      }
+    }, {
+      key: "notify",
+      value: function notify() {
+        this.subs.forEach(function (watcher) {
+          return watcher.update();
+        });
+      }
+    }]);
+
+    return Dep;
+  }();
+  var stack = [];
+  function pushTarget(watcher) {
+    Dep.target = watcher;
+    stack.push[watcher];
+  }
+  function popTarget() {
+    stack.pop();
+    Dep.target = stack[stack.length - 1];
+  }
 
   var Observer = /*#__PURE__*/function () {
     function Observer(value) {
       _classCallCheck(this, Observer);
 
       // vue如果数据层次过多 需要递归去解析对象中的属性 依次添加set和gte方法
+      this.dep = new Dep(); // 给数组用的
       // 给每一个监控过的对象都增加一个__ob__属性 方便之后新增的属性再次添加监听
       // 为了避免—__ob__循环调用,我们需要在defineProperty上设置 并将其设置为不可遍历
+
       def(value, '__ob__', this);
 
       if (Array.isArray(value)) {
@@ -324,11 +370,30 @@
 
 
   function defineReactive(data, key, value) {
-    observe(value); // 递归实现深度检测
+    // 这个dep是给对象用的
+    var dep = new Dep(); // 这个value可能是对象 也可能是数组 返回的结果是当前这个value对应的observer实例
+
+    var childOb = observe(value); // 递归实现深度检测
 
     Object.defineProperty(data, key, {
       get: function get() {
         // 获取值的操作
+        // 如果当前有watcher
+        if (Dep.target) {
+          // 将当前watcher存起来
+          dep.depend();
+
+          if (childOb) {
+            /*****数组的依赖收集********/
+            // 收集了数组的相关依赖
+            childOb.dep.depend(); // 如果数组中还有数组
+
+            if (Array.isArray(value)) {
+              dependArray(value);
+            }
+          }
+        }
+
         return value;
       },
       set: function set(newValue) {
@@ -336,9 +401,24 @@
         if (newValue === value) return;
         observe(newValue); // 继续劫持用户设置的值 因为用户有可能设置的是一个对象
 
-        value = newValue;
+        value = newValue; // 通知依赖的watcher来进行更新操作
+
+        dep.notify();
       }
     });
+  } // 如果数组里面  添加的是一个新数组
+
+
+  function dependArray(value) {
+    for (var i = 0; i < value.length; i++) {
+      var current = value[i]; // 将数组中的每一个都取出来 收集依赖
+
+      current.__ob__ && current.__ob__.dep.depend();
+
+      if (Array.isArray(current)) {
+        dependArray(current);
+      }
+    }
   } // 吧data的数据 使用defineProperty重新定义
 
 
@@ -609,6 +689,53 @@
     return renderFn; // 模板引擎实现： 1.拼接字符串 2.增加with 3.new Function
   }
 
+  var callbacks = [];
+  var waiting = false;
+
+  function flushCallback() {
+    callbacks.forEach(function (cb) {
+      return cb();
+    });
+    waiting = false;
+    callbacks = [];
+  }
+
+  function nextTick(cb) {
+    // 多次调用nexttick 如果没有刷新的时候 就先把他放到数组中
+    // 刷新后 更改waiting
+    callbacks.push(cb);
+
+    if (waiting === false) {
+      setTimeout(flushCallback, 0);
+      waiting = true;
+    }
+  }
+
+  var queue = [];
+  var has = {};
+
+  function flushSchedularQueue() {
+    queue.forEach(function (watcher) {
+      return watcher.run();
+    });
+    queue = [];
+    has = {};
+  }
+
+  function queueWatcher(watcher) {
+    var id = watcher.id;
+
+    if (has[id] == null) {
+      queue.push(watcher);
+      has[id] = true; // 微任务和宏任务
+      //Vue.$nextTick = promise / mutationObserver / setImmediated / setTimeout
+
+      nextTick(flushSchedularQueue);
+    }
+  }
+
+  var id$1 = 0;
+
   var Watcher = /*#__PURE__*/function () {
     function Watcher(vm, exprOrFn, callback, options) {
       _classCallCheck(this, Watcher);
@@ -616,20 +743,50 @@
       this.vm = vm;
       this.callback = callback;
       this.options = options;
+      this.id = id$1++;
       this.getter = exprOrFn; //将内部传过来的回调函数 放到getter属性上
 
+      this.depsId = new Set();
+      this.deps = [];
       this.get();
     }
 
     _createClass(Watcher, [{
+      key: "addDep",
+      value: function addDep(dep) {
+        // watcher里不能放重复的dep dep里不能放重复的watcher
+        var id = dep.id;
+
+        if (!this.depsId.has(id)) {
+          this.depsId.add(id);
+          this.deps.push(dep);
+          dep.addSub(this);
+        }
+      }
+    }, {
       key: "get",
       value: function get() {
-        this.getter();
+        // 把当前watcher存起来
+        pushTarget(this);
+        this.getter(); // 渲染watcher的执行
+        //移出watcher
+
+        popTarget();
+      }
+    }, {
+      key: "update",
+      value: function update() {
+        queueWatcher(this);
+      }
+    }, {
+      key: "run",
+      value: function run() {
+        this.get();
       }
     }]);
 
     return Watcher;
-  }();
+  }(); // 在模板取值中 会进行依赖收集 再更改数据是会进行对应的watcher调用更新操作
 
   function patch(oldVnode, vnode) {
     // 递归创建真实节点 替换掉老节点
@@ -759,6 +916,8 @@
         mountComponent(vm, el);
       }
     };
+
+    Vue.prototype.$nextTick = nextTick;
   }
 
   function createElement(tag) {

@@ -34,9 +34,11 @@ methods.forEach(method => {
         break;
     }
     if(inserted) {
+      // 新增属性继续观察
       this.__ob__.observerArray(inserted)
     }
 
+    ob.dep.notify()
     return result
   }
 })

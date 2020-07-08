@@ -6,10 +6,12 @@
   <title>Document</title>
 </head>
 <body>
+  <!-- watcher 和 dep的关系 一个watcher对应n个dep 一个dep对应多个watcher -->
   <div id="app" style="color: red;background: yellow">
     hellos
     <p>{{name}}</p>
     <p>{{age}}</p>
+    <p>{{skill}}</p>
   </div>
 </body>
 <script src="/dist/umd/vue.js"></script>
@@ -39,5 +41,14 @@
       console.log('aaa')
     }
   })
+
+  setTimeout(() => {
+    vm.age = 1000
+    // 依赖收集 希望数据变化可以自动去重新执行我们的渲染watcher
+    vm.skill.push([1,2,3])
+    vm.$nextTick(() => {
+      console.log(this.HTMLAllCollection)
+    })
+  }, 1000)
 </script>
 </html>
