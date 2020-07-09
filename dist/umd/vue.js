@@ -432,6 +432,164 @@
     return new Observer(data);
   }
 
+  var callbacks = [];
+  var waiting = false;
+
+  function flushCallback() {
+    callbacks.forEach(function (cb) {
+      return cb();
+    });
+    waiting = false;
+    callbacks = [];
+  }
+
+  function nextTick(cb) {
+    // 多次调用nexttick 如果没有刷新的时候 就先把他放到数组中
+    // 刷新后 更改waiting
+    callbacks.push(cb);
+
+    if (waiting === false) {
+      setTimeout(flushCallback, 0);
+      waiting = true;
+    }
+  }
+
+  var queue = [];
+  var has = {};
+
+  function flushSchedularQueue() {
+    queue.forEach(function (watcher) {
+      return watcher.run();
+    });
+    queue = [];
+    has = {};
+  }
+
+  function queueWatcher(watcher) {
+    var id = watcher.id;
+
+    if (has[id] == null) {
+      queue.push(watcher);
+      has[id] = true; // 微任务和宏任务
+      //Vue.$nextTick = promise / mutationObserver / setImmediated / setTimeout
+
+      nextTick(flushSchedularQueue);
+    }
+  }
+
+  var id$1 = 0;
+
+  var Watcher = /*#__PURE__*/function () {
+    function Watcher(vm, exprOrFn) {
+      var callback = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : function () {};
+      var options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+
+      _classCallCheck(this, Watcher);
+
+      this.vm = vm;
+      this.callback = callback;
+      this.options = options;
+      this.id = id$1++;
+      this.exprOrFn = exprOrFn;
+      this.immediate = options.immediate; // 计算属性标识 
+
+      this.lazy = options.lazy;
+      this.dirty = this.lazy;
+
+      if (typeof exprOrFn === 'function') {
+        this.getter = exprOrFn; //将内部传过来的回调函数 放到getter属性上
+      } else {
+        this.getter = function () {
+          // 会将vm上对应的表达式取出来
+          return function (vm, exprOrFn) {
+            return vm[exprOrFn];
+          }(vm, exprOrFn);
+        };
+      }
+
+      if (options.user) {
+        // 如果是用户watcher
+        this.user = true;
+      }
+
+      this.depsId = new Set();
+      this.deps = []; // 创建watcher的时候 先将表达式对应的值取出来
+      // 如果当前是计算属性的话 不会默认调取get方法
+
+      this.value = this.lazy ? undefined : this.get(); // 如果有immediate 则直接执行handler函数
+
+      if (this.immediate) {
+        this.callback(this.value);
+      }
+    }
+
+    _createClass(Watcher, [{
+      key: "evaluate",
+      value: function evaluate() {
+        // dep放置计算属性watcher
+        this.value = this.get(); // 设置标记 表明计算属性值已经求过了
+
+        this.dirty = false;
+      }
+    }, {
+      key: "addDep",
+      value: function addDep(dep) {
+        // watcher里不能放重复的dep dep里不能放重复的watcher
+        var id = dep.id;
+
+        if (!this.depsId.has(id)) {
+          this.depsId.add(id);
+          this.deps.push(dep);
+          dep.addSub(this);
+        }
+      }
+    }, {
+      key: "depend",
+      value: function depend() {
+        var deps = this.deps.length;
+
+        while (i--) {
+          // 找到firstName和lastName的dep 为其添加当前的渲染watcher
+          deps[i].depend();
+        }
+      }
+    }, {
+      key: "get",
+      value: function get() {
+        // 把当前watcher存起来
+        pushTarget(this); // 这个函数调用时就会将当前计算属性watcher存起来
+
+        var value = this.getter.call(this.vm); // 渲染watcher的执行
+        //移出watcher
+
+        popTarget();
+        return value;
+      }
+    }, {
+      key: "update",
+      value: function update() {
+        if (this.lazy) {
+          // 如果是计算属性依赖的值变化了 稍后取值时重新计算
+          this.dirty = true;
+        } else {
+          queueWatcher(this);
+        }
+      }
+    }, {
+      key: "run",
+      value: function run() {
+        // 新值
+        var value = this.get();
+
+        if (this.value !== value) {
+          this.callback(value, this.value);
+        }
+      }
+    }]);
+
+    return Watcher;
+  }(); // 在模板取值中 会进行依赖收集 再更改数据是会进行对应的watcher调用更新操作
+
   function initState(vm) {
     var opts = vm.$options; // vue的数据来源 属性 方法 数据 计算数学 watch
 
@@ -443,9 +601,13 @@
       initData(vm);
     }
 
-    if (opts.cpmputed) ;
+    if (opts.computed) {
+      initComputed(vm);
+    }
 
-    if (opts.watch) ;
+    if (opts.watch) {
+      initWatch(vm);
+    }
   }
 
   function initData(vm) {
@@ -462,6 +624,69 @@
 
 
     observe(data); // 响应式原理
+  } // 计算属性
+  // 计算属性特点 默认不执行 等用户取值的时候再执行，会缓存取值的结果
+  // 如果依赖的值变化了 会更新dirty属性 再次取值时 可以重新求值
+
+
+  function createComputedGetter(vm, key) {
+    // 这个watcher就是我们定义的计算属性
+    var watcher = vm._watchersComputed[key]; // 用户取值时会执行此方法
+
+    return function () {
+      if (watcher) {
+        // 如果页面取值 而且dirty是true 就会去调用watcher的get方法
+        if (watcher.dirty) {
+          watcher.evaluate();
+        }
+
+        if (Dep.target) {
+          watcher.depend();
+        }
+
+        return watcher.value;
+      }
+    };
+  }
+
+  function initComputed(vm) {
+    var computed = vm.$options.computed; // 将计算属性的配置 放到VM上
+
+    var watchers = vm._watchersComputed = Object.create(null);
+
+    for (var key in computed) {
+      var userDef = computed[key];
+      watchers[key] = new Watcher(vm, userDef, function () {}, {
+        lazy: true
+      });
+      Object.defineProperty(vm, key, {
+        get: createComputedGetter(vm, key)
+      });
+    }
+  } // watch属性
+  // watch不能用在模板里 监控的逻辑都放在watch中即可
+
+
+  function createWatcher(vm, key, handler, opts) {
+    return vm.$watch(key, handler, opts);
+  }
+
+  function initWatch(vm) {
+    // 获取用户传入的watch
+    var watch = vm.$options.watch;
+
+    for (var key in watch) {
+      var userDef = watch[key];
+      var handler = userDef;
+
+      if (userDef.handler) {
+        handler = userDef.handler;
+      }
+
+      createWatcher(vm, key, handler, {
+        immediate: userDef.immediate
+      });
+    }
   }
 
   // ast语法树 用对象来描述原生语法 虚拟dom 用对象来描述dom节点
@@ -689,105 +914,6 @@
     return renderFn; // 模板引擎实现： 1.拼接字符串 2.增加with 3.new Function
   }
 
-  var callbacks = [];
-  var waiting = false;
-
-  function flushCallback() {
-    callbacks.forEach(function (cb) {
-      return cb();
-    });
-    waiting = false;
-    callbacks = [];
-  }
-
-  function nextTick(cb) {
-    // 多次调用nexttick 如果没有刷新的时候 就先把他放到数组中
-    // 刷新后 更改waiting
-    callbacks.push(cb);
-
-    if (waiting === false) {
-      setTimeout(flushCallback, 0);
-      waiting = true;
-    }
-  }
-
-  var queue = [];
-  var has = {};
-
-  function flushSchedularQueue() {
-    queue.forEach(function (watcher) {
-      return watcher.run();
-    });
-    queue = [];
-    has = {};
-  }
-
-  function queueWatcher(watcher) {
-    var id = watcher.id;
-
-    if (has[id] == null) {
-      queue.push(watcher);
-      has[id] = true; // 微任务和宏任务
-      //Vue.$nextTick = promise / mutationObserver / setImmediated / setTimeout
-
-      nextTick(flushSchedularQueue);
-    }
-  }
-
-  var id$1 = 0;
-
-  var Watcher = /*#__PURE__*/function () {
-    function Watcher(vm, exprOrFn, callback, options) {
-      _classCallCheck(this, Watcher);
-
-      this.vm = vm;
-      this.callback = callback;
-      this.options = options;
-      this.id = id$1++;
-      this.getter = exprOrFn; //将内部传过来的回调函数 放到getter属性上
-
-      this.depsId = new Set();
-      this.deps = [];
-      this.get();
-    }
-
-    _createClass(Watcher, [{
-      key: "addDep",
-      value: function addDep(dep) {
-        // watcher里不能放重复的dep dep里不能放重复的watcher
-        var id = dep.id;
-
-        if (!this.depsId.has(id)) {
-          this.depsId.add(id);
-          this.deps.push(dep);
-          dep.addSub(this);
-        }
-      }
-    }, {
-      key: "get",
-      value: function get() {
-        // 把当前watcher存起来
-        pushTarget(this);
-        this.getter(); // 渲染watcher的执行
-        //移出watcher
-
-        popTarget();
-      }
-    }, {
-      key: "update",
-      value: function update() {
-        queueWatcher(this);
-      }
-    }, {
-      key: "run",
-      value: function run() {
-        this.get();
-      }
-    }]);
-
-    return Watcher;
-  }(); // 在模板取值中 会进行依赖收集 再更改数据是会进行对应的watcher调用更新操作
-
   function patch(oldVnode, vnode) {
     // 递归创建真实节点 替换掉老节点
     var isRealElement = oldVnode.nodeType;
@@ -918,6 +1044,14 @@
     };
 
     Vue.prototype.$nextTick = nextTick;
+
+    Vue.prototype.$watch = function (expr, handler, opts) {
+      var vm = this; // 原理 创建一个用户watcher
+
+      new Watcher(vm, expr, handler, _objectSpread2({
+        user: true
+      }, opts));
+    };
   }
 
   function createElement(tag) {

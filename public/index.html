@@ -12,6 +12,7 @@
     <p>{{name}}</p>
     <p>{{age}}</p>
     <p>{{skill}}</p>
+    <p>我的姓名：{{fullName}}</p>
   </div>
 </body>
 <script src="/dist/umd/vue.js"></script>
@@ -28,14 +29,23 @@
           b: 2,
           c: 3,
           d: [1, 2, 3]
-        }
+        },
+        firstName: 'json',
+        lastName: 'code'
       }
     },
-    computed() {
-
+    computed:{
+      fullName() {
+        return this.firstName + this.lastName
+      }
     },
-    watch() {
-
+    watch: {
+      age:{
+        handler(newValue, oldValue) {
+          console.log(newValue, oldValue)
+        },
+        immediate: true
+      }
     },
     beforeCreate() {
       console.log('aaa')
@@ -46,6 +56,8 @@
     vm.age = 1000
     // 依赖收集 希望数据变化可以自动去重新执行我们的渲染watcher
     vm.skill.push([1,2,3])
+    // 更改计算属性
+    vm.firstName = 'NB'
     vm.$nextTick(() => {
       console.log(this.HTMLAllCollection)
     })

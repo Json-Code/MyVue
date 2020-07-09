@@ -3,6 +3,7 @@ import {compileToFunction} from './compiler/index'
 import {mountComponent, callHook} from './lifycycle'
 import {mergeOptions} from './util/index'
 import {nextTick} from './util/next-tick'
+import Watcher from './observer/watcher'
 
 export function initMixin(Vue) {
   // 在原型上添加一个init方法
@@ -41,4 +42,9 @@ export function initMixin(Vue) {
     }
   }
   Vue.prototype.$nextTick = nextTick
+  Vue.prototype.$watch = function (expr, handler, opts) {
+    const vm = this
+    // 原理 创建一个用户watcher
+    new Watcher(vm, expr, handler, {user: true, ...opts})
+  }
 }
